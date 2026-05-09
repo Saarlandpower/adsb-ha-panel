@@ -303,13 +303,17 @@
       position: absolute;
       bottom: 16px;
       right: 16px;
-      width: 300px;
+      width: 320px;
       background: rgba(17, 24, 39, 0.96);
       border: 1px solid var(--border2);
       border-radius: 8px;
       backdrop-filter: blur(12px);
       display: none;
       z-index: 1000;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border2) transparent;
     }
 
     #detail-panel.visible { display: block; }
@@ -341,7 +345,55 @@
 
     .detail-close:hover { color: var(--text); }
 
-    .detail-body { padding: 12px 14px; }
+    .detail-body { padding: 0; }
+
+    /* ─── Aircraft Photo ─────────────────────────────────────── */
+    #dp-photo-wrap {
+      position: relative;
+      width: 100%;
+      height: 160px;
+      background: var(--bg);
+      border-radius: 8px 8px 0 0;
+      overflow: hidden;
+    }
+
+    #dp-photo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      transition: opacity 0.4s;
+    }
+
+    #dp-photo.loaded { display: block; }
+
+    #dp-photo-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    #dp-photo-placeholder svg { opacity: 0.25; }
+
+    #dp-photo-credit {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 4px 8px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      font-size: 10px;
+      color: rgba(255,255,255,0.6);
+      display: none;
+    }
+
+    .detail-data { padding: 12px 14px; }
 
     .detail-row {
       display: flex;
@@ -623,7 +675,17 @@
         <span class="detail-callsign" id="dp-callsign">—</span>
         <button class="detail-close" onclick="closeDetail()">✕</button>
       </div>
-      <div class="detail-body" id="dp-body"></div>
+      <div id="dp-photo-wrap">
+        <div id="dp-photo-placeholder">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L8 9H4l2 3H4l1 2h3l1 2H7l1 2h4v3h2v-3h4l1-2h-2l1-2H17l2-3h-4L12 2Z"/></svg>
+          <span id="dp-photo-status">Foto wird geladen…</span>
+        </div>
+        <img id="dp-photo" alt="Flugzeugfoto" />
+        <div id="dp-photo-credit"></div>
+      </div>
+      <div class="detail-body">
+        <div class="detail-data" id="dp-body"></div>
+      </div>
     </div>
   </div>
 
@@ -636,7 +698,7 @@
    CONFIG  —  ggf. anpassen
 ═══════════════════════════════════════════════════════════════ */
 const CONFIG = {
-  adsbUrl:     'http://192.168.178.130:1099',   // dein adsb.im
+  adsbUrl:     'http://192.168.178.130:1091',   // dein adsb.im (CORS-Proxy)
   refreshMs:   5000,                             // Aktualisierungsintervall
   homeLat:     49.23,                            // dein Standort (Saarbrücken)
   homeLon:     7.00,
@@ -956,6 +1018,67 @@ function altBadgeClass(alt) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   AIRCRAFT PHOTO  (planespotters.net API — kostenlos, kein Key)
+═══════════════════════════════════════════════════════════════ */
+const photoCache = {};
+
+async function fetchAircraftPhoto(icao, registration) {
+  const key = icao.toLowerCase();
+  if (photoCache[key] !== undefined) return photoCache[key];
+
+  try {
+    const res = await fetch(`https://api.planespotters.net/pub/photos/hex/${key}`);
+    if (!res.ok) throw new Error('no photo');
+    const data = await res.json();
+    if (data.photos && data.photos.length > 0) {
+      const p = data.photos[0];
+      photoCache[key] = {
+        url:          p.thumbnail_large?.src || p.thumbnail?.src,
+        photographer: p.photographer,
+        link:         p.link,
+      };
+    } else {
+      photoCache[key] = null;
+    }
+  } catch {
+    photoCache[key] = null;
+  }
+  return photoCache[key];
+}
+
+function showPhoto(photo) {
+  const img         = document.getElementById('dp-photo');
+  const placeholder = document.getElementById('dp-photo-placeholder');
+  const credit      = document.getElementById('dp-photo-credit');
+  const status      = document.getElementById('dp-photo-status');
+
+  if (!photo || !photo.url) {
+    img.classList.remove('loaded');
+    placeholder.style.display = 'flex';
+    credit.style.display = 'none';
+    status.textContent = 'Kein Foto verfügbar';
+    return;
+  }
+
+  placeholder.style.display = 'none';
+  img.onload = () => {
+    img.classList.add('loaded');
+    if (photo.photographer) {
+      credit.textContent = '📷 ' + photo.photographer;
+      credit.style.display = 'block';
+    }
+  };
+  img.onerror = () => {
+    img.classList.remove('loaded');
+    placeholder.style.display = 'flex';
+    status.textContent = 'Foto konnte nicht geladen werden';
+  };
+  img.src = photo.url;
+  if (photo.link) img.style.cursor = 'pointer';
+  img.onclick = photo.link ? () => window.open(photo.link, '_blank') : null;
+}
+
+/* ════════════════════════════════════════════════════════════
    SELECT AIRCRAFT
 ═══════════════════════════════════════════════════════════════ */
 function selectAircraft(icao) {
@@ -975,6 +1098,17 @@ function selectAircraft(icao) {
   // Show detail panel
   const callsign = (a.flight || icao).trim();
   document.getElementById('dp-callsign').textContent = callsign;
+
+  // Reset photo state
+  const img = document.getElementById('dp-photo');
+  img.classList.remove('loaded');
+  document.getElementById('dp-photo-placeholder').style.display = 'flex';
+  document.getElementById('dp-photo-status').textContent = 'Foto wird geladen…';
+  document.getElementById('dp-photo-credit').style.display = 'none';
+
+  // Load photo async
+  fetchAircraftPhoto(a.hex, a.r).then(photo => showPhoto(photo));
+
   document.getElementById('dp-body').innerHTML = `
     <div class="detail-row"><span class="d-lbl">ICAO Hex</span><span class="d-val">${a.hex.toUpperCase()}</span></div>
     <div class="detail-row"><span class="d-lbl">Squawk</span><span class="d-val">${a.squawk || '—'}</span></div>
