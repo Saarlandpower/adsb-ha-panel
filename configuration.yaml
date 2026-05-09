@@ -1,0 +1,11 @@
+# ─────────────────────────────────────────────────────────────
+# Home Assistant – ADS-B Dashboard  (iframe panel – empfohlen)
+# ─────────────────────────────────────────────────────────────
+# Füge dies in deine configuration.yaml ein:
+
+panel_iframe:
+  adsb_radar:
+    title: "ADS-B Radar"
+    icon: mdi:radar
+    url: /local/adsb-panel/adsb-panel.html
+    require_admin: false
