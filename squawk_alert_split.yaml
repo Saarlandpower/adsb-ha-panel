@@ -85,7 +85,7 @@ input_text:
           - condition: template
             value_template: "{{ alarm_key not in seen }}"
 
-          - service: notify.Mathias
+          - service: notify.NAME
             data:
               message: >
                 ✈️ ADS-B ALARM
@@ -99,7 +99,7 @@ input_text:
 
                 🔗 https://www.flightradar24.com/{{ callsign }}
 
-          - service: notify.mobile_app_mathias
+          - service: notify.mobile_app_XXX
             continue_on_error: true
             data:
               title: "✈️ {{ squawk_label }} – Squawk {{ squawk }}"
