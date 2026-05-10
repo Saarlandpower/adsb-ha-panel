@@ -44,7 +44,7 @@ In `/config/configuration.yaml` einfügen (IP und Port anpassen):
 
 ```yaml
 rest:
-  - resource: http://192.168.178.130:1090/aircraft.json
+  - resource: http://XXX.XXX.XXX.XXX:1090/aircraft.json
     scan_interval: 10
     sensor:
       - name: "ADS-B Aircraft JSON"
@@ -127,7 +127,7 @@ In `adsb-panel.html` den `CONFIG`-Block oben im `<script>`-Bereich anpassen:
 
 ```javascript
 const CONFIG = {
-  adsbUrl:    'http://192.168.178.130:1091',  // IP deines Pi + CORS-Proxy Port
+  adsbUrl:    'http://XXX.XXX.XXX.XXX:1091',  // IP deines Pi + CORS-Proxy Port
   refreshMs:  5000,                            // Aktualisierung in ms
   homeLat:    49.23,                           // Dein Breitengrad
   homeLon:    7.00,                            // Dein Längengrad
@@ -286,7 +286,7 @@ action:
 #### 6d — Notify-Services anpassen
 
 In den Automationen ersetzen:
-- `notify.DEIN_TELEGRAM_SERVICE` → z.B. `notify.telegram` oder `notify.Mathias`
+- `notify.DEIN_TELEGRAM_SERVICE` → z.B. `notify.telegram` oder `notify.NAME`
 - `notify.mobile_app_DEIN_HANDY` → deinen Handy-Service aus **Einstellungen → Geräte → Companion App**
 
 ---
