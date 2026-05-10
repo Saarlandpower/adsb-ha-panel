@@ -1,0 +1,134 @@
+# ═══════════════════════════════════════════════════════════════
+# TEIL 1 — in configuration.yaml einfügen
+# ═══════════════════════════════════════════════════════════════
+
+input_text:
+  adsb_seen_squawks:
+    name: "ADS-B Gesehene Squawk-Alarme"
+    max: 255
+    initial: ""
+
+
+# ═══════════════════════════════════════════════════════════════
+# TEIL 2 — in template.yaml einfügen
+# ═══════════════════════════════════════════════════════════════
+
+- sensor:
+    - name: "ADS-B Aktive Squawk Alarme"
+      unique_id: adsb_active_squawk_alerts
+      state: >
+        {% set aircraft = state_attr('sensor.ads_b_aircraft_json', 'aircraft') %}
+        {% if aircraft %}
+          {% set watch = ['7700','7600','7500','7777','7001','7002','7003','7004','7005','7006','7007'] %}
+          {% set found = aircraft | selectattr('squawk', 'defined')
+                                  | selectattr('squawk', 'in', watch)
+                                  | list %}
+          {{ found | count }}
+        {% else %}
+          0
+        {% endif %}
+
+
+# ═══════════════════════════════════════════════════════════════
+# TEIL 3 — in automations.yaml einfügen
+# (Achtung: automations.yaml beginnt mit "- id: ..." ohne
+#  den übergeordneten "automation:" Schlüssel)
+# ═══════════════════════════════════════════════════════════════
+
+- id: adsb_squawk_alert
+  alias: "ADS-B Squawk Alarm"
+  description: "Benachrichtigung bei kritischen Squawk-Codes"
+  mode: single
+  max_exceeded: silent
+
+  trigger:
+    - platform: time_pattern
+      seconds: "/15"
+
+  action:
+    - variables:
+        aircraft: "{{ state_attr('sensor.ads_b_aircraft_json', 'aircraft') }}"
+        critical_squawks:
+          "7700": "🚨 NOTFALL"
+          "7600": "📻 FUNKAUSFALL"
+          "7500": "🔫 ENTFÜHRUNG"
+          "7777": "⚔️ MILITÄR ABFANG"
+          "7001": "🪖 Militär"
+          "7002": "🪖 Militär"
+          "7003": "🪖 Militär"
+          "7004": "🪖 Militär"
+          "7005": "🪖 Militär"
+          "7006": "🪖 Militär"
+          "7007": "🪖 Militär"
+        seen: "{{ states('input_text.adsb_seen_squawks') }}"
+
+    - condition: template
+      value_template: "{{ aircraft is not none and aircraft | count > 0 }}"
+
+    - repeat:
+        for_each: >
+          {{ aircraft | selectattr('squawk', 'defined')
+                      | selectattr('squawk', 'in', critical_squawks.keys() | list)
+                      | list }}
+        sequence:
+          - variables:
+              ac: "{{ repeat.item }}"
+              squawk: "{{ ac.squawk }}"
+              callsign: "{{ ac.flight | default(ac.hex) | trim }}"
+              alarm_key: "{{ callsign }}_{{ squawk }}"
+              squawk_label: "{{ critical_squawks[squawk] | default('⚠️ Unbekannt') }}"
+              alt_ft: "{{ ac.alt_baro | default(0) | int }}"
+              speed: "{{ ac.gs | default(0) | int }}"
+              lat: "{{ ac.lat | default('?') }}"
+              lon: "{{ ac.lon | default('?') }}"
+
+          - condition: template
+            value_template: "{{ alarm_key not in seen }}"
+
+          - service: notify.Mathias
+            data:
+              message: >
+                ✈️ ADS-B ALARM
+
+                {{ squawk_label }}
+                Squawk: {{ squawk }}
+                Callsign: {{ callsign }}
+                Höhe: {{ alt_ft }} ft
+                Speed: {{ speed }} kts
+                Position: {{ lat }}, {{ lon }}
+
+                🔗 https://www.flightradar24.com/{{ callsign }}
+
+          - service: notify.mobile_app_mathias
+            continue_on_error: true
+            data:
+              title: "✈️ {{ squawk_label }} – Squawk {{ squawk }}"
+              message: "{{ callsign }} · {{ alt_ft }}ft · {{ speed }}kts"
+              data:
+                url: "https://www.flightradar24.com/{{ callsign }}"
+                push:
+                  sound: default
+
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.adsb_seen_squawks
+            data:
+              value: >
+                {% set current = states('input_text.adsb_seen_squawks') %}
+                {% set keys = current.split(',') | reject('eq','') | list %}
+                {% set keys = (keys + [alarm_key]) | unique | list %}
+                {% set keys = keys[-20:] %}
+                {{ keys | join(',') }}
+
+- id: adsb_squawk_reset
+  alias: "ADS-B Squawk Cache Reset"
+  description: "Gesehene Squawks alle 2h zurücksetzen"
+  trigger:
+    - platform: time_pattern
+      hours: "/2"
+  action:
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.adsb_seen_squawks
+      data:
+        value: ""
