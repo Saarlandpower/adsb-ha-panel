@@ -440,6 +440,72 @@
       transition: width 0.6s ease;
     }
 
+    /* ─── Squawk Alert Banner ───────────────────────────────────── */
+    #squawk-alert-bar {
+      display: none;
+      background: rgba(248,113,113,0.12);
+      border-bottom: 1px solid rgba(248,113,113,0.4);
+      padding: 0;
+      animation: alertPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes alertPulse {
+      0%, 100% { background: rgba(248,113,113,0.12); }
+      50%       { background: rgba(248,113,113,0.22); }
+    }
+
+    #squawk-alert-bar.visible { display: block; }
+
+    .squawk-alert-item {
+      padding: 8px 16px;
+      border-bottom: 1px solid rgba(248,113,113,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .squawk-alert-item:last-child { border-bottom: none; }
+    .squawk-alert-item:hover { background: rgba(248,113,113,0.08); }
+
+    .squawk-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--red);
+    }
+
+    .squawk-callsign {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .squawk-code {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(248,113,113,0.15);
+      color: var(--red);
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid rgba(248,113,113,0.3);
+    }
+
+    .squawk-amber .squawk-label,
+    .squawk-amber .squawk-code { color: var(--amber); }
+    .squawk-amber .squawk-code { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.3); }
+    .squawk-amber { animation: alertPulseAmber 2s ease-in-out infinite; }
+    @keyframes alertPulseAmber {
+      0%, 100% { background: rgba(251,191,36,0.08); }
+      50%       { background: rgba(251,191,36,0.16); }
+    }
+
+    .squawk-purple .squawk-label,
+    .squawk-purple .squawk-code { color: var(--accent2); }
+    .squawk-purple .squawk-code { background: rgba(129,140,248,0.12); border-color: rgba(129,140,248,0.3); }
+
     /* ─── FR24 Link Banner ───────────────────────────────────── */
     .fr24-banner {
       padding: 10px 16px;
@@ -586,6 +652,9 @@
 
   <!-- ═══════════ SIDEBAR ═══════════ -->
   <aside id="sidebar">
+
+    <!-- Squawk Alerts -->
+    <div id="squawk-alert-bar"></div>
 
     <!-- Stats -->
     <div class="section-head">Statistiken</div>
@@ -927,6 +996,9 @@ function updateDisplay(data) {
     }
   });
 
+  // ── Squawk Alerts ──
+  updateSquawkAlerts(aircraft);
+
   // ── Sidebar list ──
   renderList();
 
@@ -1018,8 +1090,53 @@ function altBadgeClass(alt) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   AIRCRAFT PHOTO  (planespotters.net API — kostenlos, kein Key)
+   SQUAWK DEFINITIONS
 ═══════════════════════════════════════════════════════════════ */
+const SQUAWK_ALERTS = {
+  '7700': { label: '🚨 NOTFALL',          color: 'red',    prio: 1 },
+  '7500': { label: '🔫 ENTFÜHRUNG',        color: 'red',    prio: 1 },
+  '7600': { label: '📻 FUNKAUSFALL',       color: 'amber',  prio: 2 },
+  '7777': { label: '⚔️ MILITÄR ABFANG',   color: 'purple', prio: 3 },
+  '7001': { label: '🪖 Militär',           color: 'purple', prio: 4 },
+  '7002': { label: '🪖 Militär',           color: 'purple', prio: 4 },
+  '7003': { label: '🪖 Militär',           color: 'purple', prio: 4 },
+  '7004': { label: '🪖 Militär',           color: 'purple', prio: 4 },
+  '7005': { label: '🪖 Militär',           color: 'purple', prio: 4 },
+  '7006': { label: '🪖 Militär',           color: 'purple', prio: 4 },
+  '7007': { label: '🪖 Militär',           color: 'purple', prio: 4 },
+};
+
+/* ════════════════════════════════════════════════════════════
+   SQUAWK ALERT RENDERING
+═══════════════════════════════════════════════════════════════ */
+function updateSquawkAlerts(aircraft) {
+  const bar = document.getElementById('squawk-alert-bar');
+  const alerts = aircraft
+    .filter(a => a.squawk && SQUAWK_ALERTS[a.squawk])
+    .map(a => ({ ...a, alertInfo: SQUAWK_ALERTS[a.squawk] }))
+    .sort((a, b) => a.alertInfo.prio - b.alertInfo.prio);
+
+  if (alerts.length === 0) {
+    bar.classList.remove('visible');
+    bar.innerHTML = '';
+    return;
+  }
+
+  bar.classList.add('visible');
+  bar.innerHTML = alerts.map(a => {
+    const callsign = (a.flight || a.hex || '').trim();
+    const colorClass = a.alertInfo.color === 'red' ? '' :
+                       a.alertInfo.color === 'amber' ? 'squawk-amber' : 'squawk-purple';
+    return `
+      <div class="squawk-alert-item ${colorClass}" onclick="selectAircraft('${a.hex.toLowerCase()}')">
+        <span class="squawk-label">${a.alertInfo.label}</span>
+        <span class="squawk-callsign">${callsign}</span>
+        <span class="squawk-code">${a.squawk}</span>
+      </div>`;
+  }).join('');
+}
+
+
 const photoCache = {};
 
 async function fetchAircraftPhoto(icao, registration) {
